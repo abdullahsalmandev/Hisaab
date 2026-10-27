@@ -39,8 +39,8 @@ CREATE INDEX entries_account_date ON entries(account_id, date);
 
 - Balances are never stored: `SUM(CASE WHEN type='in' THEN amount ELSE -amount END)`. An account with no entries has balance 0.
 - `getAccounts`: `created_at` ascending (id as tiebreak). `getEntries`: `date` descending, then `id` descending. `getSources`: by name.
-- `addEntry` / `updateEntry`: for type `in`, the source is trimmed and also `INSERT OR IGNORE`d into `sources`; for type `out`, source is stored as null. Notes are trimmed, empty becomes null.
+- `addEntry` / `updateEntry`: the source insert and the entry write run in one transaction. For type `in`, the source is trimmed and also `INSERT OR IGNORE`d into `sources`; for type `out`, source is stored as null. Notes are trimmed, empty becomes null.
 - Account and source names are trimmed. `addSource` ignores an empty name.
 - snake_case columns are aliased to the camelCase fields in `src/types.ts`.
-- `exportData` returns every row with `version: 1` and `exportedAt` set to now.
-- `importData` throws an `Error` unless `version === 1` and `accounts`, `entries`, `sources` are arrays. It then deletes all rows and inserts the backup rows, keeping ids, in one transaction. A bad row violates a table constraint and rolls the whole import back.
+- `exportData` reads all three tables inside one transaction (a consistent snapshot) and sets `version: 1` and `exportedAt` to now.
+- `importData` validates the whole backup before touching the database and throws a clear `Error` on the first problem: `version === 1`, arrays present, ids are positive integers, names and dates are non-empty text, entry `type` is `'in'` or `'out'`, `amount` is a positive whole number, and every entry's `accountId` exists in the backup's accounts. It then deletes all rows and inserts the backup rows, keeping ids, in one transaction; table constraints roll the import back as a second line of defence.

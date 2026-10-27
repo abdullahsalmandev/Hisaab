@@ -105,26 +105,31 @@ export async function getEntry(id: number): Promise<Entry | null> {
   return db.getFirstAsync<Entry>(`${ENTRIES} WHERE id = ?`, id);
 }
 
-// ponytail: source insert and entry write are not in one transaction; a failed entry write leaves an extra source. Wrap in withTransactionAsync if that matters.
 export async function addEntry(e: NewEntry): Promise<number> {
   const db = await getDb();
   const { source, note } = cleanEntry(e);
-  if (source) await db.runAsync('INSERT OR IGNORE INTO sources (name) VALUES (?)', source);
-  const r = await db.runAsync(
-    'INSERT INTO entries (account_id, type, amount, source, note, date) VALUES (?, ?, ?, ?, ?, ?)',
-    e.accountId, e.type, e.amount, source, note, e.date,
-  );
-  return r.lastInsertRowId;
+  let id = 0;
+  await db.withTransactionAsync(async () => {
+    if (source) await db.runAsync('INSERT OR IGNORE INTO sources (name) VALUES (?)', source);
+    const r = await db.runAsync(
+      'INSERT INTO entries (account_id, type, amount, source, note, date) VALUES (?, ?, ?, ?, ?, ?)',
+      e.accountId, e.type, e.amount, source, note, e.date,
+    );
+    id = r.lastInsertRowId;
+  });
+  return id;
 }
 
 export async function updateEntry(id: number, e: NewEntry): Promise<void> {
   const db = await getDb();
   const { source, note } = cleanEntry(e);
-  if (source) await db.runAsync('INSERT OR IGNORE INTO sources (name) VALUES (?)', source);
-  await db.runAsync(
-    'UPDATE entries SET account_id = ?, type = ?, amount = ?, source = ?, note = ?, date = ? WHERE id = ?',
-    e.accountId, e.type, e.amount, source, note, e.date, id,
-  );
+  await db.withTransactionAsync(async () => {
+    if (source) await db.runAsync('INSERT OR IGNORE INTO sources (name) VALUES (?)', source);
+    await db.runAsync(
+      'UPDATE entries SET account_id = ?, type = ?, amount = ?, source = ?, note = ?, date = ? WHERE id = ?',
+      e.accountId, e.type, e.amount, source, note, e.date, id,
+    );
+  });
 }
 
 export async function deleteEntry(id: number): Promise<void> {
@@ -143,24 +148,57 @@ export async function addSource(name: string): Promise<void> {
   if (clean) await db.runAsync('INSERT OR IGNORE INTO sources (name) VALUES (?)', clean);
 }
 
-// ponytail: three reads outside one transaction; fine for a single-user app, wrap if a write could land mid-export.
 export async function exportData(): Promise<BackupFile> {
   const db = await getDb();
-  return {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    accounts: await db.getAllAsync('SELECT id, name, created_at AS createdAt FROM accounts ORDER BY id'),
-    entries: await db.getAllAsync<Entry>(`${ENTRIES} ORDER BY id`),
-    sources: await db.getAllAsync<Source>('SELECT id, name FROM sources ORDER BY id'),
-  };
+  let backup!: BackupFile;
+  await db.withTransactionAsync(async () => {
+    backup = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      accounts: await db.getAllAsync('SELECT id, name, created_at AS createdAt FROM accounts ORDER BY id'),
+      entries: await db.getAllAsync<Entry>(`${ENTRIES} ORDER BY id`),
+      sources: await db.getAllAsync<Source>('SELECT id, name FROM sources ORDER BY id'),
+    };
+  });
+  return backup;
 }
 
-// ponytail: only shape is validated here; bad rows hit the table constraints and roll the whole import back.
-export async function importData(data: BackupFile): Promise<void> {
+const isId = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
+const isText = (s: unknown) => typeof s === 'string' && s.trim() !== '';
+const isTextOrNull = (s: unknown) => s === null || typeof s === 'string';
+
+// Rejects the whole backup before anything is deleted; the table constraints stay as a second line of defence.
+function validateBackup(data: BackupFile): void {
   if (!data || data.version !== 1) throw new Error('Invalid backup: unsupported or missing version (expected 1)');
   for (const key of ['accounts', 'entries', 'sources'] as const) {
     if (!Array.isArray(data[key])) throw new Error(`Invalid backup: "${key}" must be an array`);
   }
+  const bad = (what: string, i: number, why: string): never => {
+    throw new Error(`Invalid backup: ${what} #${i + 1} ${why}`);
+  };
+  const accountIds = new Set<number>();
+  data.accounts.forEach((a, i) => {
+    if (!isId(a?.id)) bad('account', i, 'has an invalid id');
+    if (!isText(a.name)) bad('account', i, 'has no name');
+    if (!isText(a.createdAt)) bad('account', i, 'has no createdAt');
+    accountIds.add(a.id);
+  });
+  data.sources.forEach((s, i) => {
+    if (!isId(s?.id)) bad('source', i, 'has an invalid id');
+    if (!isText(s.name)) bad('source', i, 'has no name');
+  });
+  data.entries.forEach((e, i) => {
+    if (!isId(e?.id)) bad('entry', i, 'has an invalid id');
+    if (e.type !== 'in' && e.type !== 'out') bad('entry', i, `has type "${e.type}" (expected "in" or "out")`);
+    if (!isId(e.amount)) bad('entry', i, 'amount must be a positive whole number of paisa');
+    if (!accountIds.has(e.accountId)) bad('entry', i, `refers to account ${e.accountId}, which is not in the backup`);
+    if (!isText(e.date)) bad('entry', i, 'has no date');
+    if (!isTextOrNull(e.source) || !isTextOrNull(e.note)) bad('entry', i, 'has a non-text source or note');
+  });
+}
+
+export async function importData(data: BackupFile): Promise<void> {
+  validateBackup(data);
   const db = await getDb();
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM entries');

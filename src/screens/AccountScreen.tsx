@@ -59,7 +59,7 @@ export default function AccountScreen({ navigation, route }: Props) {
   const header = (
     <View style={{ paddingBottom: spacing.md }}>
       <Text style={{ color: colors.muted, textAlign: 'center' }}>Balance</Text>
-      <Text style={{ color: colors.text, fontSize: 40, fontWeight: '700', textAlign: 'center', marginVertical: spacing.md }}>
+      <Text style={{ color: account && account.balance < 0 ? colors.outColor : colors.text, fontSize: 40, fontWeight: '700', textAlign: 'center', marginVertical: spacing.md }}>
         {account ? formatMoney(account.balance) : ''}
       </Text>
       <View style={{ flexDirection: 'row', gap: spacing.md }}>
