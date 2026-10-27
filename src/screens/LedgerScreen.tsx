@@ -28,13 +28,14 @@ export default function LedgerScreen({ navigation, route }: Props) {
   const load = useCallback(async () => {
     try {
       const [s, l, sum] = await Promise.all([getAccountSource(accountId, sourceId), getLedger(accountId, sourceId), getSourceSummary(sourceId)]);
+      if (!s) { navigation.goBack(); return; } // the source was deleted or removed from this account while this screen was open
       setSource(s);
       setRows(l);
       setOverall(sum && sum.accounts.length > 1 ? sum.total : null);
     } catch (e) {
       Alert.alert('Could not load entries', errMsg(e));
     }
-  }, [accountId, sourceId]);
+  }, [accountId, sourceId, navigation]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const confirmDelete = (r: LedgerRow) =>

@@ -72,7 +72,7 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const confirmDelete = (a: AccountWithBalance) =>
-    Alert.alert(`Delete "${a.name}"?`, 'All sources and entries in this account will be removed. This cannot be undone.', [
+    Alert.alert(`Delete "${a.name}"?`, 'All entries in this account will be removed. The sources stay in your other accounts. This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
