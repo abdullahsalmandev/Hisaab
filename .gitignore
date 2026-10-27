@@ -39,3 +39,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+android/
+ios/
+
+# release signing and build output: never commit
+*.keystore
+*.jks
+*.apk
+*.aab
+gradle.properties
+keystore.properties
