@@ -12,7 +12,7 @@
     "android": {
       "package": "com.abdullahsalmandev.hisaab",
       "versionCode": 1,
-      "allowBackup": true,
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
