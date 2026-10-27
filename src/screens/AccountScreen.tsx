@@ -4,9 +4,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { addSource, deleteSource, getAccount, getSources, renameSource } from '../db';
+import { addSource, getAccount, getAccountSources, getUnlinkedSources, linkSource, renameSource, unlinkSource } from '../db';
 import { avatarTints, colors, fonts, radius } from '../theme';
-import type { AccountWithBalance, RootStackParamList, SourceWithBalance } from '../types';
+import type { AccountSourceBalance, AccountWithBalance, RootStackParamList, Source } from '../types';
 import { formatMoney } from '../utils/money';
 import Header from '../components/account/Header';
 import SourceModal from '../components/account/SourceModal';
@@ -21,15 +21,17 @@ export default function AccountScreen({ navigation, route }: Props) {
   const { accountId } = route.params;
   const insets = useSafeAreaInsets();
   const [account, setAccount] = useState<AccountWithBalance | null>(null);
-  const [sources, setSources] = useState<SourceWithBalance[]>([]);
+  const [sources, setSources] = useState<AccountSourceBalance[]>([]);
+  const [unlinked, setUnlinked] = useState<Source[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [editing, setEditing] = useState<SourceWithBalance | 'new' | null>(null);
+  const [editing, setEditing] = useState<AccountSourceBalance | 'new' | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [a, s] = await Promise.all([getAccount(accountId), getSources(accountId)]);
+      const [a, s, u] = await Promise.all([getAccount(accountId), getAccountSources(accountId), getUnlinkedSources(accountId)]);
       setAccount(a);
       setSources(s);
+      setUnlinked(u);
     } catch (e) {
       Alert.alert('Could not load sources', errMsg(e));
     } finally {
@@ -40,33 +42,43 @@ export default function AccountScreen({ navigation, route }: Props) {
 
   // Throws on duplicate name; the modal shows the message inline.
   const save = async (name: string) => {
-    if (editing && editing !== 'new') await renameSource(editing.id, name);
-    else await addSource(accountId, name);
+    if (editing && editing !== 'new') await renameSource(editing.sourceId, name);
+    else await linkSource(accountId, await addSource(name));
     setEditing(null);
     load();
   };
 
-  const confirmDelete = (s: SourceWithBalance) =>
-    Alert.alert(`Delete ${s.name}?`, 'This deletes the source and all its entries', [
+  const pick = async (s: Source) => {
+    try {
+      await linkSource(accountId, s.id);
+    } catch (e) {
+      Alert.alert('Could not add source', errMsg(e));
+    }
+    setEditing(null);
+    load();
+  };
+
+  const confirmRemove = (s: AccountSourceBalance) =>
+    Alert.alert(`Remove ${s.sourceName}?`, `Deletes this source's entries in ${s.accountName}. The source stays in other accounts.`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Delete',
+        text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteSource(s.id);
+            await unlinkSource(accountId, s.sourceId);
           } catch (e) {
-            Alert.alert('Could not delete source', errMsg(e));
+            Alert.alert('Could not remove source', errMsg(e));
           }
           load();
         },
       },
     ]);
 
-  const options = (s: SourceWithBalance) =>
-    Alert.alert(s.name, undefined, [
+  const options = (s: AccountSourceBalance) =>
+    Alert.alert(s.sourceName, 'Renaming changes the name in every account.', [
       { text: 'Rename', onPress: () => setEditing(s) },
-      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(s) },
+      { text: 'Remove from this account', style: 'destructive', onPress: () => confirmRemove(s) },
       { text: 'Cancel', style: 'cancel' },
     ]);
 
@@ -103,17 +115,17 @@ export default function AccountScreen({ navigation, route }: Props) {
                 const tint = avatarTints[i % avatarTints.length];
                 return (
                   <Pressable
-                    key={s.id}
-                    onPress={() => navigation.navigate('Source', { sourceId: s.id })}
+                    key={s.sourceId}
+                    onPress={() => navigation.navigate('Ledger', { accountId, sourceId: s.sourceId })}
                     onLongPress={() => options(s)}
                     accessibilityRole="button"
                     style={{ minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, borderTopWidth: i ? 1 : 0, borderTopColor: colors.hairline }}
                   >
                     <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: tint.bg }}>
-                      <Text style={{ fontFamily: fonts.heavy, fontSize: 16, color: tint.fg }}>{initials(s.name)}</Text>
+                      <Text style={{ fontFamily: fonts.heavy, fontSize: 16, color: tint.fg }}>{initials(s.sourceName)}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 16, color: colors.text }}>{s.name}</Text>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 16, color: colors.text }}>{s.sourceName}</Text>
                       <Text style={{ fontFamily: fonts.regular, fontSize: 13, color: colors.muted }}>{s.lastEntryDate ? `Last entry ${formatShortDate(s.lastEntryDate)}` : 'No entries yet'}</Text>
                     </View>
                     <Text style={[num, { fontFamily: fonts.heavy, fontSize: 17, color: s.balance < 0 ? colors.outColor : colors.text }]}>{formatMoney(s.balance)}</Text>
@@ -126,7 +138,7 @@ export default function AccountScreen({ navigation, route }: Props) {
           </>
         )}
       </ScrollView>
-      <SourceModal visible={editing !== null} title={editing && editing !== 'new' ? 'Rename source' : 'Add source'} initial={editing && editing !== 'new' ? editing.name : ''} onSave={save} onCancel={() => setEditing(null)} />
+      <SourceModal visible={editing !== null} title={editing && editing !== 'new' ? 'Rename source' : 'Add source'} initial={editing && editing !== 'new' ? editing.sourceName : ''} existing={editing === 'new' ? unlinked : undefined} onPick={pick} onSave={save} onCancel={() => setEditing(null)} />
     </View>
   );
 }

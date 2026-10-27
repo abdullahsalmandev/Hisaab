@@ -19,7 +19,7 @@ function today() {
 // Cheap check so a wrong file is refused before the "replace all data" prompt. importData validates the rest.
 function parseBackupFile(text: string): unknown {
   const d = JSON.parse(text);
-  if (d?.version !== 1 && d?.version !== 2) throw new Error('This file is not a Hisaab backup.');
+  if (d?.version !== 1 && d?.version !== 2 && d?.version !== 3) throw new Error('This file is not a Hisaab backup.');
   return d;
 }
 

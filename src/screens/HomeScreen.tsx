@@ -4,31 +4,42 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { addAccount, deleteAccount, getAccounts, getTotal, renameAccount } from '../db';
+import { addAccount, addSource, deleteAccount, getAccounts, getAllSources, getTotal, renameAccount, renameSource } from '../db';
 import { colors, fonts, radius } from '../theme';
-import type { AccountWithBalance, RootStackParamList } from '../types';
+import type { AccountWithBalance, RootStackParamList, SourceWithTotal } from '../types';
 import AccountCard from '../components/home/AccountCard';
 import AccountModal from '../components/home/AccountModal';
 import HeroCard from '../components/home/HeroCard';
+import Segmented, { type Tab } from '../components/home/Segmented';
+import SourceRow from '../components/home/SourceRow';
+import SourceNameModal from '../components/source/SourceNameModal';
+import { sourceOptions } from '../components/source/actions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// The last tab is remembered while the app is open (module state outlives the screen).
+let lastTab: Tab = 'accounts';
+
 export default function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [total, setTotal] = useState(0);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
+  const [sources, setSources] = useState<SourceWithTotal[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [tab, setTab] = useState<Tab>(lastTab);
   const [editing, setEditing] = useState<AccountWithBalance | 'new' | null>(null);
+  const [editingSource, setEditingSource] = useState<SourceWithTotal | 'new' | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [t, a] = await Promise.all([getTotal(), getAccounts()]);
+      const [t, a, s] = await Promise.all([getTotal(), getAccounts(), getAllSources()]);
       setTotal(t);
       setAccounts(a);
+      setSources(s);
     } catch (e) {
-      Alert.alert('Could not load accounts', errMsg(e));
+      Alert.alert('Could not load your data', errMsg(e));
     } finally {
       setLoaded(true);
     }
@@ -44,6 +55,19 @@ export default function HomeScreen({ navigation }: Props) {
     } catch (e) {
       Alert.alert('Could not save account', errMsg(e));
     }
+    load();
+  };
+
+  const changeTab = (t: Tab) => {
+    lastTab = t;
+    setTab(t);
+  };
+
+  // Throws on duplicate name; the modal shows the message inline.
+  const saveSource = async (name: string) => {
+    if (editingSource && editingSource !== 'new') await renameSource(editingSource.id, name);
+    else await addSource(name);
+    setEditingSource(null);
     load();
   };
 
@@ -67,6 +91,29 @@ export default function HomeScreen({ navigation }: Props) {
       { text: 'Cancel', style: 'cancel' },
     ]);
 
+  const empty = (text: string) => (
+    <View style={{ padding: 24, borderRadius: radius.card, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.dashed, alignItems: 'center' }}>
+      <Text style={{ color: colors.muted, fontFamily: fonts.semibold, fontSize: 15, textAlign: 'center' }}>{text}</Text>
+    </View>
+  );
+  const emptyAccounts = loaded ? empty('No accounts yet. Add your first account.') : undefined;
+  // The Sources tab is one white card, so it renders as the list's empty component (the list data is empty on that tab).
+  const sourcesList = !loaded ? undefined : sources.length === 0 ? (
+    empty('No sources yet. Add one for each person or origin of money.')
+  ) : (
+    <View style={{ backgroundColor: colors.card, borderRadius: radius.card, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+      {sources.map((s, i) => (
+        <SourceRow
+          key={s.id}
+          source={s}
+          index={i}
+          onPress={() => navigation.navigate('SourceDetail', { sourceId: s.id })}
+          onLongPress={() => sourceOptions(s, () => setEditingSource(s), load)}
+        />
+      ))}
+    </View>
+  );
+
   const header = (
     <View style={{ gap: 20 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -81,14 +128,15 @@ export default function HomeScreen({ navigation }: Props) {
         </Pressable>
       </View>
       <HeroCard total={total} accounts={accounts} />
+      <Segmented value={tab} onChange={changeTab} />
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 17 }}>Accounts</Text>
+        <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 17 }}>{tab === 'accounts' ? 'Accounts' : 'Sources'}</Text>
         <Pressable
           accessibilityRole="button"
-          onPress={() => setEditing('new')}
+          onPress={() => (tab === 'accounts' ? setEditing('new') : setEditingSource('new'))}
           style={{ height: 44, paddingHorizontal: 18, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.borderStrong }}
         >
-          <Text style={{ color: colors.primary, fontFamily: fonts.semibold, fontSize: 15 }}>+ Add account</Text>
+          <Text style={{ color: colors.primary, fontFamily: fonts.semibold, fontSize: 15 }}>{tab === 'accounts' ? '+ Add account' : '+ Add source'}</Text>
         </Pressable>
       </View>
     </View>
@@ -97,18 +145,12 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <FlatList
-        data={accounts}
+        data={tab === 'accounts' ? accounts : []}
         keyExtractor={(a) => String(a.id)}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16, gap: 12 }}
         ListHeaderComponent={header}
         ListHeaderComponentStyle={{ marginBottom: 4 }}
-        ListEmptyComponent={
-          loaded ? (
-            <View style={{ padding: 24, borderRadius: radius.card, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.dashed, alignItems: 'center' }}>
-              <Text style={{ color: colors.muted, fontFamily: fonts.semibold, fontSize: 15, textAlign: 'center' }}>No accounts yet. Add your first account.</Text>
-            </View>
-          ) : undefined
-        }
+        ListEmptyComponent={tab === 'accounts' ? emptyAccounts : sourcesList}
         renderItem={({ item, index }) => (
           <AccountCard
             account={item}
@@ -128,6 +170,13 @@ export default function HomeScreen({ navigation }: Props) {
         initial={editing && editing !== 'new' ? editing.name : ''}
         onSave={save}
         onCancel={() => setEditing(null)}
+      />
+      <SourceNameModal
+        visible={editingSource !== null}
+        title={editingSource && editingSource !== 'new' ? 'Rename source' : 'Add source'}
+        initial={editingSource && editingSource !== 'new' ? editingSource.name : ''}
+        onSave={saveSource}
+        onCancel={() => setEditingSource(null)}
       />
     </View>
   );

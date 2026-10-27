@@ -3,10 +3,10 @@ import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, Vi
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { addEntry, addSource, getAccount, getEntry, getSource, getSources, updateEntry } from '../db';
+import { addEntry, addSource, getAccount, getAccountSources, getAllSources, getEntry, updateEntry } from '../db';
 import { formatDate, paisaToInput, parseDateInput, toDateInput } from '../components/account/helpers';
 import { colors, fonts, radius } from '../theme';
-import type { RootStackParamList, SourceWithBalance } from '../types';
+import type { RootStackParamList, Source } from '../types';
 import { toPaisa } from '../utils/money';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EntryForm'>;
@@ -48,12 +48,12 @@ const daysAgo = (n: number) => {
 
 export default function EntryFormScreen({ navigation, route }: Props) {
   const { entryId } = route.params;
+  const accountId = route.params.accountId;
   const insets = useSafeAreaInsets();
   const [type, setType] = useState(route.params.type);
   const [amount, setAmount] = useState('');
-  const [accountId, setAccountId] = useState<number | null>(null);
   const [accountName, setAccountName] = useState('');
-  const [sources, setSources] = useState<SourceWithBalance[]>([]);
+  const [sources, setSources] = useState<Pick<Source, 'id' | 'name'>[]>([]);
   const [sourceId, setSourceId] = useState<number | null>(null);
   const [date, setDate] = useState(toDateInput(new Date()));
   const [originalDate, setOriginalDate] = useState<string | null>(null);
@@ -73,13 +73,10 @@ export default function EntryFormScreen({ navigation, route }: Props) {
           navigation.goBack();
           return;
         }
-        const src = await getSource(e?.sourceId ?? route.params.sourceId);
-        if (!src) throw new Error('Source not found.');
-        const [acc, list] = await Promise.all([getAccount(src.accountId), getSources(src.accountId)]);
-        setAccountId(src.accountId);
+        const [acc, list] = await Promise.all([getAccount(accountId), getAccountSources(accountId)]);
         setAccountName(acc?.name ?? '');
-        setSources(list);
-        setSourceId(src.id);
+        setSources(list.map((s) => ({ id: s.sourceId, name: s.sourceName })));
+        setSourceId(e?.sourceId ?? route.params.sourceId);
         if (e) {
           setType(e.type);
           setAmount(paisaToInput(e.amount));
@@ -90,18 +87,20 @@ export default function EntryFormScreen({ navigation, route }: Props) {
         showError(err);
       }
     })();
-  }, [entryId, route.params.sourceId, navigation]);
+  }, [entryId, accountId, route.params.sourceId, navigation]);
 
   // A chosen day gets the current time of day; an edit that keeps the day keeps its original timestamp.
   const iso = originalDate && date === toDateInput(new Date(originalDate)) ? originalDate : parseDateInput(date);
   const typeColor = type === 'in' ? colors.inColor : colors.outColor;
 
   const createSource = async () => {
-    if (accountId == null) return;
     try {
-      const id = await addSource(accountId, newName);
-      setSources(await getSources(accountId));
-      setSourceId(id);
+      // A name that already exists globally is reused; it gets linked to this account when the entry is saved.
+      const clean = newName.trim();
+      const found = (await getAllSources()).find((s) => s.name.toLowerCase() === clean.toLowerCase());
+      const src = found ?? { id: await addSource(clean), name: clean };
+      setSources((l) => (l.some((s) => s.id === src.id) ? l : [...l, { id: src.id, name: src.name }]));
+      setSourceId(src.id);
       setErrors((x) => ({ ...x, source: undefined }));
       setAdding(false);
       setNewName('');
@@ -123,7 +122,7 @@ export default function EntryFormScreen({ navigation, route }: Props) {
 
     setSaving(true);
     try {
-      const entry = { sourceId, type, amount: paisa, date: iso };
+      const entry = { accountId, sourceId, type, amount: paisa, date: iso };
       if (entryId) await updateEntry(entryId, entry);
       else await addEntry(entry);
       navigation.goBack();

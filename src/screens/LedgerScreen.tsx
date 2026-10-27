@@ -4,9 +4,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { deleteEntry, getAccount, getLedger, getSource } from '../db';
+import { deleteEntry, getAccountSource, getLedger, getSourceSummary } from '../db';
 import { colors, fonts, radius } from '../theme';
-import type { EntryType, LedgerRow, RootStackParamList, SourceWithBalance } from '../types';
+import type { EntryType, LedgerRow, AccountSourceBalance, RootStackParamList } from '../types';
 import { formatMoney } from '../utils/money';
 import Header from '../components/account/Header';
 import { formatShortDate, formatTime } from '../components/account/helpers';
@@ -19,22 +19,22 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const cols = { date: { flex: 1.5 }, amt: { flex: 1, alignItems: 'flex-end' as const } };
 
 export default function LedgerScreen({ navigation, route }: Props) {
-  const { sourceId } = route.params;
+  const { accountId, sourceId } = route.params;
   const insets = useSafeAreaInsets();
-  const [source, setSource] = useState<SourceWithBalance | null>(null);
-  const [accountName, setAccountName] = useState('');
+  const [source, setSource] = useState<AccountSourceBalance | null>(null);
+  const [overall, setOverall] = useState<number | null>(null); // source total across accounts; null when it is only in this account
   const [rows, setRows] = useState<LedgerRow[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [s, l] = await Promise.all([getSource(sourceId), getLedger(sourceId)]);
+      const [s, l, sum] = await Promise.all([getAccountSource(accountId, sourceId), getLedger(accountId, sourceId), getSourceSummary(sourceId)]);
       setSource(s);
       setRows(l);
-      if (s) setAccountName((await getAccount(s.accountId))?.name ?? '');
+      setOverall(sum && sum.accounts.length > 1 ? sum.total : null);
     } catch (e) {
       Alert.alert('Could not load entries', errMsg(e));
     }
-  }, [sourceId]);
+  }, [accountId, sourceId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const confirmDelete = (r: LedgerRow) =>
@@ -63,7 +63,7 @@ export default function LedgerScreen({ navigation, route }: Props) {
 
   const bigButton = (label: string, type: EntryType) => (
     <Pressable
-      onPress={() => navigation.navigate('EntryForm', { sourceId, type })}
+      onPress={() => navigation.navigate('EntryForm', { accountId, sourceId, type })}
       accessibilityRole="button"
       style={{ flex: 1, height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: radius.button, backgroundColor: type === 'in' ? colors.inColor : colors.outColor }}
     >
@@ -81,7 +81,7 @@ export default function LedgerScreen({ navigation, route }: Props) {
     const isOut = r.type === 'out';
     return (
       <Pressable
-        onPress={() => navigation.navigate('EntryForm', { sourceId, type: r.type, entryId: r.id })}
+        onPress={() => navigation.navigate('EntryForm', { accountId, sourceId, type: r.type, entryId: r.id })}
         onLongPress={() => confirmDelete(r)}
         style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index ? 1 : 0, borderTopColor: colors.hairline }}
       >
@@ -103,7 +103,7 @@ export default function LedgerScreen({ navigation, route }: Props) {
   const balance = source?.balance ?? 0;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Header title={source?.name ?? ''} subtitle={accountName} />
+      <Header title={source?.sourceName ?? ''} subtitle={source?.accountName} />
       <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: insets.bottom + 16, gap: 12 }}>
         <View style={{ backgroundColor: colors.primary, borderRadius: radius.hero, padding: 20 }}>
           <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.onPrimaryMuted }}>Balance</Text>
@@ -113,6 +113,13 @@ export default function LedgerScreen({ navigation, route }: Props) {
             {miniCard('Total out', `− ${formatMoney(source?.totalOut ?? 0)}`, colors.outColor)}
           </View>
         </View>
+
+        {overall !== null && (
+          <Pressable onPress={() => navigation.navigate('SourceDetail', { sourceId })} accessibilityRole="button" style={{ height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <Text style={[num, { fontFamily: fonts.semibold, fontSize: 14, color: colors.primary }]}>Across all accounts: {formatMoney(overall)}</Text>
+            <Feather name="chevron-right" size={18} color={colors.primary} />
+          </Pressable>
+        )}
 
         <View style={{ flex: 1, backgroundColor: colors.card, borderRadius: radius.card, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', backgroundColor: colors.cardAlt, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.hairline }}>
