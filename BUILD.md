@@ -8,10 +8,14 @@ This repo is public. Never commit a keystore, a password, or a gradle properties
 
 ### Prerequisites
 
-- JDK 17
-- Android Studio with an Android SDK installed
-- `ANDROID_HOME` set to the SDK path (for example `export ANDROID_HOME=$HOME/Android/Sdk`)
-- `npm install` already run in the repo
+- JDK 17. If another JDK is your default, do not change it globally; set `JAVA_HOME` on the build command only (step 5).
+- Android SDK with `ANDROID_HOME` set to its path (for example `export ANDROID_HOME=$HOME/Android/Sdk`). Android Studio installs one, or use the command-line tools alone:
+  ```bash
+  sdkmanager --licenses
+  sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006"
+  ```
+  These versions are what `prebuild` generated for Expo SDK 58 (React Native 0.88). After an SDK upgrade, check `compileSdk`, `buildTools` and `ndkVersion` in `node_modules/react-native/gradle/libs.versions.toml`.
+- Node 22 (see `.nvmrc`) and `npm install` already run in the repo
 
 ### 1. Generate the native project
 
@@ -19,14 +23,14 @@ This repo is public. Never commit a keystore, a password, or a gradle properties
 npx expo prebuild -p android
 ```
 
-This creates `android/`, which is git-ignored.
+This creates `android/`, which is git-ignored. It also rewrites the `android` and `ios` scripts in `package.json` to `expo run:android` and `expo run:ios`; undo that with `git checkout package.json` if you don't want it.
 
 ### 2. Create a release keystore (once, outside the repo)
 
 ```bash
-mkdir -p ~/keystores
+mkdir -p ~/keys
 keytool -genkeypair -v -storetype PKCS12 \
-  -keystore ~/keystores/hisaab-release.keystore \
+  -keystore ~/keys/hisaab-release.jks \
   -alias hisaab -keyalg RSA -keysize 2048 -validity 10000
 ```
 
@@ -37,7 +41,7 @@ Choose a strong password and remember the alias (`hisaab`). See the warning in s
 Add to `~/.gradle/gradle.properties` (your home directory, not the repo):
 
 ```properties
-HISAAB_STORE_FILE=/home/you/keystores/hisaab-release.keystore
+HISAAB_STORE_FILE=/home/you/keys/hisaab-release.jks
 HISAAB_STORE_PASSWORD=your-store-password
 HISAAB_KEY_ALIAS=hisaab
 HISAAB_KEY_PASSWORD=your-key-password
@@ -69,13 +73,15 @@ android {
 }
 ```
 
-The values come from `~/.gradle/gradle.properties`, so no secret appears in the file. The build fails with a missing property error if step 3 was skipped.
+The values come from `~/.gradle/gradle.properties`, so no secret appears in the file. Any Gradle build (not just release) fails with a missing property error if step 3 was skipped, because the signing config is read at configuration time.
 
 ### 5. Build
 
 ```bash
-cd android && ./gradlew assembleRelease
+cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease
 ```
+
+The first build downloads Gradle and the dependencies and compiles native code for four ABIs, so expect it to take a while.
 
 ### 6. Output
 
@@ -114,7 +120,7 @@ The `preview` profile in `eas.json` produces an APK. EAS compiles in the cloud, 
 
 ## D) WARNING: back up your keystore
 
-Back up `hisaab-release.keystore`, the alias, and both passwords somewhere safe and separate from this machine (for example a password manager plus an encrypted copy of the file).
+Back up `hisaab-release.jks`, the alias, and both passwords somewhere safe and separate from this machine (for example a password manager plus an encrypted copy of the file).
 
 - If you lose the keystore or passwords, you can never sign an update that installs over the old app.
 - The only way forward is to uninstall the old app, and uninstalling deletes all Hisaab data on the phone.
