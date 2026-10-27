@@ -8,7 +8,7 @@ This repo is public. Never commit a keystore, a password, or a gradle properties
 
 ### Prerequisites
 
-- JDK 17. If another JDK is your default, do not change it globally; set `JAVA_HOME` on the build command only (step 5).
+- JDK 17. If another JDK is your default, do not change it globally; set `JAVA_HOME` on the build command only (step 6).
 - Android SDK with `ANDROID_HOME` set to its path (for example `export ANDROID_HOME=$HOME/Android/Sdk`). Android Studio installs one, or use the command-line tools alone:
   ```bash
   sdkmanager --licenses
@@ -75,21 +75,31 @@ android {
 
 The values come from `~/.gradle/gradle.properties`, so no secret appears in the file. Any Gradle build (not just release) fails with a missing property error if step 3 was skipped, because the signing config is read at configuration time.
 
-### 5. Build
+### 5. Build for arm64-v8a only
+
+`expo-build-properties` is not installed, so the target ABI is set by hand. In `android/gradle.properties` (the generated one inside the repo's git-ignored `android/`, not the one in your home directory), change the existing line to:
+
+```properties
+reactNativeArchitectures=arm64-v8a
+```
+
+`prebuild` regenerates this file, so re-apply the line after every prebuild. This cuts build time and APK size; modern phones are arm64. Do not use this APK on an emulator or a 32-bit phone.
+
+### 6. Build
 
 ```bash
 cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease
 ```
 
-The first build downloads Gradle and the dependencies and compiles native code for four ABIs, so expect it to take a while.
+The first build downloads Gradle and the dependencies and compiles native code, so expect it to take a while.
 
-### 6. Output
+### 7. Output
 
 ```
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
-### 7. Install on the phone
+### 8. Install on the phone
 
 With USB debugging enabled and the phone connected:
 
@@ -107,16 +117,21 @@ eas login
 eas build -p android --profile preview
 ```
 
-The `preview` profile in `eas.json` produces an APK. EAS compiles in the cloud, so your source is uploaded to Expo's build servers. The app itself stays offline: the resulting APK makes no network calls. Download the APK from the link EAS prints and install it as in step 7.
+The `preview` profile in `eas.json` produces an APK. EAS compiles in the cloud, so your source is uploaded to Expo's build servers. The app itself stays offline: the resulting APK makes no network calls. Download the APK from the link EAS prints and install it as in step 8.
 
-## C) Updating the app later
+## C) Updating the app on the phone
 
-1. In `app.json`, bump `android.versionCode` (integer, must increase every release) and `version` (for example `1.0.1`).
-2. Sign with the SAME keystore and alias. A different key means Android refuses to install over the existing app.
-3. In the old app, go to Settings and export a backup before installing.
-4. Rebuild, then install over the old app with `adb install -r app-release.apk` (or open the APK on the phone). Data is kept when the signature matches.
+1. In the app, go to Settings and export a backup. Keep the file off the phone too.
+2. In `app.json`, bump `version` (for example `1.1.1`) and increase `android.versionCode` by 1 (it must grow every release).
+3. Regenerate the native project: `npx expo prebuild -p android --clean`.
+4. Re-apply the two edits that prebuild wipes: the release signing config (step 4) and `reactNativeArchitectures=arm64-v8a` (step 5).
+5. Build with JDK 17: `cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease`.
+6. Install over the old app: `adb install -r android/app/build/outputs/apk/release/app-release.apk`, or open the APK on the phone. The package name and keystore must be the same as before; then Android keeps the data. A different key means Android refuses the install (see section D).
 
-`prebuild` generates `android/` from `app.json`. After changing the version, regenerate with `npx expo prebuild -p android --clean`, then re-apply the signing edit from step 4. Alternatively edit `versionCode` and `versionName` in `android/app/build.gradle` directly.
+Notes:
+
+- `app.json` blocks the `INTERNET` permission, so the release APK cannot reach any network. That is intended, the app makes no network calls.
+- The dev server workflow (`npx expo start`) is unaffected.
 
 ## D) WARNING: back up your keystore
 

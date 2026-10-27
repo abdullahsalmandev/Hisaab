@@ -3,24 +3,26 @@ import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { addAccount, deleteAccount, getAccounts, getTotal, renameAccount } from '../db';
-import { formatMoney } from '../utils/money';
-import { useTheme } from '../theme';
+import { colors, fonts, radius } from '../theme';
 import type { AccountWithBalance, RootStackParamList } from '../types';
+import AccountCard from '../components/home/AccountCard';
 import AccountModal from '../components/home/AccountModal';
+import HeroCard from '../components/home/HeroCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function HomeScreen({ navigation }: Props) {
-  const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
   const [total, setTotal] = useState(0);
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState<AccountWithBalance | 'new' | null>(null);
+
+  useLayoutEffect(() => { navigation.setOptions({ headerShown: false }); }, [navigation]);
 
   const load = useCallback(async () => {
     try {
@@ -35,17 +37,6 @@ export default function HomeScreen({ navigation }: Props) {
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: 'Hisaab',
-      headerRight: () => (
-        <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={12} accessibilityLabel="Settings" style={{ padding: spacing.sm }}>
-          <Ionicons name="settings-outline" size={26} color={colors.text} />
-        </Pressable>
-      ),
-    });
-  }, [navigation, colors.text, spacing.sm]);
-
   const save = async (name: string) => {
     const target = editing;
     setEditing(null);
@@ -59,7 +50,7 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const confirmDelete = (a: AccountWithBalance) =>
-    Alert.alert(`Delete "${a.name}"?`, 'All entries in this account will be removed. This cannot be undone.', [
+    Alert.alert(`Delete "${a.name}"?`, 'All sources and entries in this account will be removed. This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -78,38 +69,60 @@ export default function HomeScreen({ navigation }: Props) {
       { text: 'Cancel', style: 'cancel' },
     ]);
 
-  const balanceColor = (n: number) => (n < 0 ? colors.outColor : colors.text);
+  const header = (
+    <View style={{ gap: 20 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.heavy, fontSize: 28 }}>Hisaab</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          onPress={() => navigation.navigate('Settings')}
+          style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+        >
+          <Feather name="settings" size={20} color={colors.text} />
+        </Pressable>
+      </View>
+      <HeroCard total={total} accounts={accounts} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 17 }}>Accounts</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setEditing('new')}
+          style={{ height: 44, paddingHorizontal: 18, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.borderStrong }}
+        >
+          <Text style={{ color: colors.primary, fontFamily: fonts.semibold, fontSize: 15 }}>+ Add account</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <FlatList
         data={accounts}
         keyExtractor={(a) => String(a.id)}
-        contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}
-        ListHeaderComponent={
-          <View style={{ backgroundColor: colors.card, borderRadius: 20, padding: spacing.lg, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border }}>
-            <Text style={{ color: colors.muted, fontSize: 16 }}>Total</Text>
-            <Text style={{ color: balanceColor(total), fontSize: 36, fontWeight: '700', marginTop: spacing.xs }}>{formatMoney(total)}</Text>
-          </View>
-        }
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16, gap: 12 }}
+        ListHeaderComponent={header}
+        ListHeaderComponentStyle={{ marginBottom: 4 }}
         ListEmptyComponent={
-          loaded ? <Text style={{ color: colors.muted, fontSize: 16, textAlign: 'center', marginTop: spacing.xl }}>No accounts yet. Add your first account.</Text> : undefined
+          loaded ? (
+            <View style={{ padding: 24, borderRadius: radius.card, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.dashed, alignItems: 'center' }}>
+              <Text style={{ color: colors.muted, fontFamily: fonts.semibold, fontSize: 15, textAlign: 'center' }}>No accounts yet. Add your first account.</Text>
+            </View>
+          ) : undefined
         }
-        renderItem={({ item }) => (
-          <Pressable
+        renderItem={({ item, index }) => (
+          <AccountCard
+            account={item}
+            index={index}
             onPress={() => navigation.navigate('Account', { accountId: item.id })}
             onLongPress={() => options(item)}
-            style={{ backgroundColor: colors.card, borderRadius: 16, padding: spacing.md, minHeight: 72, justifyContent: 'center', borderWidth: 1, borderColor: colors.border }}
-          >
-            <Text style={{ color: colors.muted, fontSize: 16 }}>{item.name}</Text>
-            <Text style={{ color: balanceColor(item.balance), fontSize: 24, fontWeight: '600', marginTop: spacing.xs }}>{formatMoney(item.balance)}</Text>
-          </Pressable>
+          />
         )}
       />
-      <View style={{ padding: spacing.md, paddingBottom: spacing.md + insets.bottom }}>
-        <Pressable onPress={() => setEditing('new')} style={{ minHeight: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary }}>
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>+ Add account</Text>
-        </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 8, paddingBottom: 16 + insets.bottom }}>
+        <Feather name="lock" size={14} color={colors.muted} />
+        <Text style={{ color: colors.muted, fontFamily: fonts.regular, fontSize: 13 }}>All data stays on this phone</Text>
       </View>
       <AccountModal
         visible={editing !== null}

@@ -7,6 +7,23 @@ export function formatDate(iso: string): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+// ISO -> "27 Oct" in local time.
+export function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+// ISO -> "2:40 PM" in local time.
+export function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+}
+
+// "ahmed khan traders" -> "AK"; first letters of up to 2 words, "?" when empty.
+export function initials(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
+}
+
 // Date -> "2026-10-25" in local time.
 export function toDateInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

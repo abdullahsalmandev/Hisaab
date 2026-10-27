@@ -1,109 +1,132 @@
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { deleteEntry, getAccount, getEntries } from '../db';
-import { formatDate } from '../components/account/helpers';
-import { useTheme } from '../theme';
-import type { AccountWithBalance, Entry, RootStackParamList } from '../types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
+import { addSource, deleteSource, getAccount, getSources, renameSource } from '../db';
+import { avatarTints, colors, fonts, radius } from '../theme';
+import type { AccountWithBalance, RootStackParamList, SourceWithBalance } from '../types';
 import { formatMoney } from '../utils/money';
+import Header from '../components/account/Header';
+import SourceModal from '../components/account/SourceModal';
+import { formatShortDate, initials } from '../components/account/helpers';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Account'>;
 
+const num = { fontVariant: ['tabular-nums' as const] };
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 export default function AccountScreen({ navigation, route }: Props) {
   const { accountId } = route.params;
-  const { colors, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const [account, setAccount] = useState<AccountWithBalance | null>(null);
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [sources, setSources] = useState<SourceWithBalance[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState<SourceWithBalance | 'new' | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [a, e] = await Promise.all([getAccount(accountId), getEntries(accountId)]);
-      if (a) navigation.setOptions({ title: a.name });
+      const [a, s] = await Promise.all([getAccount(accountId), getSources(accountId)]);
       setAccount(a);
-      setEntries(e);
-    } catch (err) {
-      Alert.alert('Error', String(err instanceof Error ? err.message : err));
+      setSources(s);
+    } catch (e) {
+      Alert.alert('Could not load sources', errMsg(e));
+    } finally {
+      setLoaded(true);
     }
-  }, [accountId, navigation]);
-
+  }, [accountId]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const confirmDelete = (e: Entry) =>
-    Alert.alert('Delete entry?', 'This cannot be undone.', [
+  // Throws on duplicate name; the modal shows the message inline.
+  const save = async (name: string) => {
+    if (editing && editing !== 'new') await renameSource(editing.id, name);
+    else await addSource(accountId, name);
+    setEditing(null);
+    load();
+  };
+
+  const confirmDelete = (s: SourceWithBalance) =>
+    Alert.alert(`Delete ${s.name}?`, 'This deletes the source and all its entries', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
           try {
-            await deleteEntry(e.id);
-            await load();
-          } catch (err) {
-            Alert.alert('Error', String(err instanceof Error ? err.message : err));
+            await deleteSource(s.id);
+          } catch (e) {
+            Alert.alert('Could not delete source', errMsg(e));
           }
+          load();
         },
       },
     ]);
 
-  const bigButton = (label: string, type: 'in' | 'out', color: string) => (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => navigation.navigate('EntryForm', { accountId, type })}
-      style={{ flex: 1, backgroundColor: color, padding: spacing.md, borderRadius: 12, alignItems: 'center' }}
-    >
-      <Text style={{ color: '#ffffff', fontSize: 18, fontWeight: '700' }}>{label}</Text>
+  const options = (s: SourceWithBalance) =>
+    Alert.alert(s.name, undefined, [
+      { text: 'Rename', onPress: () => setEditing(s) },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(s) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+
+  const balance = account?.balance ?? 0;
+  const addButton = (
+    <Pressable onPress={() => setEditing('new')} accessibilityRole="button" style={{ minHeight: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.primary }}>
+      <Text style={{ fontFamily: fonts.bold, fontSize: 15, color: colors.primary }}>+ Add source</Text>
     </Pressable>
   );
 
-  const header = (
-    <View style={{ paddingBottom: spacing.md }}>
-      <Text style={{ color: colors.muted, textAlign: 'center' }}>Balance</Text>
-      <Text style={{ color: account && account.balance < 0 ? colors.outColor : colors.text, fontSize: 40, fontWeight: '700', textAlign: 'center', marginVertical: spacing.md }}>
-        {account ? formatMoney(account.balance) : ''}
-      </Text>
-      <View style={{ flexDirection: 'row', gap: spacing.md }}>
-        {bigButton('Ingoing', 'in', colors.inColor)}
-        {bigButton('Outgoing', 'out', colors.outColor)}
-      </View>
-    </View>
-  );
-
-  const renderItem = ({ item: e }: { item: Entry }) => {
-    const isIn = e.type === 'in';
-    const color = isIn ? colors.inColor : colors.outColor;
-    const label = isIn ? e.source || 'Ingoing' : e.note || 'Outgoing';
-    const secondary = isIn ? e.note : null;
-    return (
-      <Pressable
-        onPress={() => navigation.navigate('EntryForm', { accountId, type: e.type, entryId: e.id })}
-        onLongPress={() => confirmDelete(e)}
-        style={{
-          flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border,
-          borderWidth: 1, borderRadius: 12, padding: spacing.md, marginBottom: spacing.sm,
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: 16 }}>{label}</Text>
-          {secondary ? <Text style={{ color: colors.muted }}>{secondary}</Text> : null}
-          <Text style={{ color: colors.muted, fontSize: 12 }}>{formatDate(e.date)}</Text>
-        </View>
-        <Text style={{ color, fontSize: 16, fontWeight: '700' }}>
-          {isIn ? '+' : '-'}{formatMoney(e.amount).replace('Rs ', '')}
-        </Text>
-      </Pressable>
-    );
-  };
-
   return (
-    <FlatList
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: spacing.md }}
-      data={entries}
-      keyExtractor={(e) => String(e.id)}
-      ListHeaderComponent={header}
-      ListEmptyComponent={<Text style={{ color: colors.muted, textAlign: 'center', marginTop: spacing.lg }}>No entries yet.</Text>}
-      renderItem={renderItem}
-    />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Header title={account?.name ?? ''} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+        <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+          <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.muted }}>Balance</Text>
+          <Text style={[num, { fontFamily: fonts.heavy, fontSize: 42, color: balance < 0 ? colors.outColor : colors.primary }]}>{formatMoney(balance)}</Text>
+          <Text style={{ fontFamily: fonts.regular, fontSize: 13, color: colors.muted }}>Across {sources.length} {sources.length === 1 ? 'source' : 'sources'}</Text>
+        </View>
+
+        {loaded && sources.length === 0 ? (
+          <View style={{ alignItems: 'center', gap: 16, paddingVertical: 32 }}>
+            <Text style={{ fontFamily: fonts.regular, fontSize: 15, color: colors.muted, textAlign: 'center' }}>No sources yet. Add one for each person or origin of money.</Text>
+            {addButton}
+          </View>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, marginBottom: 12 }}>
+              <Text style={{ fontFamily: fonts.bold, fontSize: 17, color: colors.text }}>Sources</Text>
+              {addButton}
+            </View>
+            <View style={{ backgroundColor: colors.card, borderRadius: radius.card, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+              {sources.map((s, i) => {
+                const tint = avatarTints[i % avatarTints.length];
+                return (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => navigation.navigate('Source', { sourceId: s.id })}
+                    onLongPress={() => options(s)}
+                    accessibilityRole="button"
+                    style={{ minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, borderTopWidth: i ? 1 : 0, borderTopColor: colors.hairline }}
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: tint.bg }}>
+                      <Text style={{ fontFamily: fonts.heavy, fontSize: 16, color: tint.fg }}>{initials(s.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 16, color: colors.text }}>{s.name}</Text>
+                      <Text style={{ fontFamily: fonts.regular, fontSize: 13, color: colors.muted }}>{s.lastEntryDate ? `Last entry ${formatShortDate(s.lastEntryDate)}` : 'No entries yet'}</Text>
+                    </View>
+                    <Text style={[num, { fontFamily: fonts.heavy, fontSize: 17, color: s.balance < 0 ? colors.outColor : colors.text }]}>{formatMoney(s.balance)}</Text>
+                    <Feather name="chevron-right" size={20} color={colors.chevron} />
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ fontFamily: fonts.regular, fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 16 }}>Tap a source to see its entries and add money in or out.</Text>
+          </>
+        )}
+      </ScrollView>
+      <SourceModal visible={editing !== null} title={editing && editing !== 'new' ? 'Rename source' : 'Add source'} initial={editing && editing !== 'new' ? editing.name : ''} onSave={save} onCancel={() => setEditing(null)} />
+    </View>
   );
 }
