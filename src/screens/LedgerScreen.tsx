@@ -11,14 +11,14 @@ import { formatMoney } from '../utils/money';
 import Header from '../components/account/Header';
 import { formatShortDate, formatTime } from '../components/account/helpers';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Source'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'Ledger'>;
 
 const num = { fontVariant: ['tabular-nums' as const] };
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 // Grid ratio 1.5 : 1 : 1 for Date | Out | In.
 const cols = { date: { flex: 1.5 }, amt: { flex: 1, alignItems: 'flex-end' as const } };
 
-export default function SourceScreen({ navigation, route }: Props) {
+export default function LedgerScreen({ navigation, route }: Props) {
   const { sourceId } = route.params;
   const insets = useSafeAreaInsets();
   const [source, setSource] = useState<SourceWithBalance | null>(null);

@@ -9,7 +9,8 @@ import { colors, fonts } from './src/theme';
 import type { RootStackParamList } from './src/types';
 import HomeScreen from './src/screens/HomeScreen';
 import AccountScreen from './src/screens/AccountScreen';
-import SourceScreen from './src/screens/SourceScreen';
+import LedgerScreen from './src/screens/LedgerScreen';
+import SourceDetailScreen from './src/screens/SourceDetailScreen';
 import EntryFormScreen from './src/screens/EntryFormScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
@@ -57,7 +58,8 @@ export default function App() {
       <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Account" component={AccountScreen} />
-        <Stack.Screen name="Source" component={SourceScreen} />
+        <Stack.Screen name="Ledger" component={LedgerScreen} />
+        <Stack.Screen name="SourceDetail" component={SourceDetailScreen} />
         <Stack.Screen name="EntryForm" component={EntryFormScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>

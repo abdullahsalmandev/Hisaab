@@ -1,8 +1,8 @@
-# Hisaab contract (v1.1)
+# Hisaab contract (v1.2)
 
 Parallel sessions build against this file. Everything marked FROZEN must not change in any session.
 
-Concept: an account holds sources (one per person or origin, like a khata). Every entry belongs to one source. A source balance is its ins minus its outs, an account balance is the sum of its sources, and the total is the sum of all accounts. All amounts are integer paisa. Entries have a date and time (ISO string) and no note in the UI; the `note` column stays in the database only so old notes are not lost.
+Concept: sources are global, like contacts: a source (a person or origin) is created on its own and can be linked to many accounts. Every entry belongs to one account AND one source, and each (account, source) pair has its own ledger and balance. An account balance is the sum of its entries, a source total is the sum of its entries across all accounts, and the grand total is unchanged. All amounts are integer paisa. Entries have a date and time (ISO string) and no note in the UI; the `note` column stays in the database only so old notes are not lost.
 
 ## FROZEN: `src/types.ts`
 
@@ -10,17 +10,20 @@ Concept: an account holds sources (one per person or origin, like a khata). Ever
 export type EntryType = 'in' | 'out';
 export interface Account { id: number; name: string; createdAt: string; }
 export interface AccountWithBalance extends Account { balance: number; sourceCount: number; }
-export interface Source { id: number; accountId: number; name: string; createdAt: string; }
-export interface SourceWithBalance extends Source { balance: number; totalIn: number; totalOut: number; lastEntryDate: string | null; }
-export interface Entry { id: number; sourceId: number; type: EntryType; amount: number; date: string; }
+export interface Source { id: number; name: string; createdAt: string; }
+export interface SourceWithTotal extends Source { total: number; accountCount: number; lastEntryDate: string | null; }
+export interface AccountSourceBalance { accountId: number; accountName: string; sourceId: number; sourceName: string; balance: number; totalIn: number; totalOut: number; lastEntryDate: string | null; }
+export interface SourceSummary { source: Source; total: number; totalIn: number; totalOut: number; accounts: AccountSourceBalance[]; }
+export interface Entry { id: number; accountId: number; sourceId: number; type: EntryType; amount: number; date: string; }
 export interface LedgerRow extends Entry { runningBalance: number; }
-export interface NewEntry { sourceId: number; type: EntryType; amount: number; date: string; }
-export interface BackupFile { version: 2; exportedAt: string; accounts: Account[]; sources: Source[]; entries: (Entry & { note?: string | null })[]; }
+export interface NewEntry { accountId: number; sourceId: number; type: EntryType; amount: number; date: string; }
+export interface BackupFile { version: 3; exportedAt: string; accounts: Account[]; sources: Source[]; accountSources: { accountId: number; sourceId: number; createdAt: string }[]; entries: (Entry & { note?: string | null })[]; }
 export type RootStackParamList = {
   Home: undefined;
   Account: { accountId: number };
-  Source: { sourceId: number };
-  EntryForm: { sourceId: number; type: EntryType; entryId?: number };
+  Ledger: { accountId: number; sourceId: number };
+  SourceDetail: { sourceId: number };
+  EntryForm: { accountId: number; sourceId: number; type: EntryType; entryId?: number };
   Settings: undefined;
 };
 ```
@@ -34,22 +37,27 @@ getAccount(id: number): Promise<AccountWithBalance | null>
 getTotal(): Promise<number>
 addAccount(name: string): Promise<number>
 renameAccount(id: number, name: string): Promise<void>
-deleteAccount(id: number): Promise<void>
-getSources(accountId: number): Promise<SourceWithBalance[]>   // balance desc, then name
-getSource(id: number): Promise<SourceWithBalance | null>
-addSource(accountId: number, name: string): Promise<number>   // trimmed; duplicate name in the account (case-insensitive) throws a clear Error
-renameSource(id: number, name: string): Promise<void>         // same duplicate rule
-deleteSource(id: number): Promise<void>                       // cascades its entries
-getLedger(sourceId: number): Promise<LedgerRow[]>             // newest first, runningBalance after each entry
+deleteAccount(id: number): Promise<void>                       // removes its links and entries; sources themselves stay
+getAllSources(): Promise<SourceWithTotal[]>                    // total desc, then name
+getSourceSummary(sourceId: number): Promise<SourceSummary | null>  // accounts by balance desc
+addSource(name: string): Promise<number>                       // global, trimmed, unique case-insensitively; a duplicate throws a clear Error
+renameSource(id: number, name: string): Promise<void>          // same duplicate rule
+deleteSource(id: number): Promise<void>                        // removes it from every account with all its entries
+getAccountSources(accountId: number): Promise<AccountSourceBalance[]>  // sources linked to the account, balance desc then name
+getAccountSource(accountId: number, sourceId: number): Promise<AccountSourceBalance | null>  // null if not linked
+getUnlinkedSources(accountId: number): Promise<Source[]>       // by name
+linkSource(accountId: number, sourceId: number): Promise<void> // no-op if already linked
+unlinkSource(accountId: number, sourceId: number): Promise<void>  // deletes this pair's entries and the link, in one transaction
+getLedger(accountId: number, sourceId: number): Promise<LedgerRow[]>  // newest first; runningBalance computed oldest to newest (date asc, id asc)
 getEntry(id: number): Promise<Entry | null>
-addEntry(e: NewEntry): Promise<number>
-updateEntry(id: number, e: NewEntry): Promise<void>           // may move to another source of the SAME account; another account throws
+addEntry(e: NewEntry): Promise<number>                         // links the pair automatically if needed, in one transaction
+updateEntry(id: number, e: NewEntry): Promise<void>            // may change sourceId (auto-link); a different accountId throws
 deleteEntry(id: number): Promise<void>
 exportData(): Promise<BackupFile>
-importData(data: unknown): Promise<void>                      // accepts parsed JSON of version 1 or 2, validates everything, throws a clear Error
+importData(data: unknown): Promise<void>                       // accepts parsed JSON of version 1, 2 or 3, validates everything, throws a clear Error
 ```
 
-Exactly these exports, no more, no fewer. Behaviour and schema are documented in `src/db/README.md`. Mutations throw `Error` with a message that is safe to show in an Alert.
+Exactly these exports, no more, no fewer. Removed since v1.1: `getSources`, `getSource` (use `getAccountSources`, `getAccountSource`, `getAllSources`, `getSourceSummary`). Behaviour and schema are documented in `src/db/README.md`. Mutations throw `Error` with a message that is safe to show in an Alert.
 
 ## FROZEN: `src/theme.ts`
 
@@ -72,16 +80,16 @@ App.tsx loads the fonts before rendering, so screens can use them directly.
 - Each screen is the default export of its file (`export default function XScreen`).
 - No network calls anywhere. No dependencies beyond those already in `package.json`.
 - `src/components/account/helpers.ts` (`formatDate`, `toDateInput`, `parseDateInput`, `paisaToInput`) may be imported by any session; only the Account session edits it.
-- `SettingsScreen` must hand the parsed backup JSON straight to `importData` and accept versions 1 and 2. Its old check (`version !== 1`) rejects v2 files and must be replaced; `importData` does the real validation.
+- `SettingsScreen` must hand the parsed backup JSON straight to `importData` and accept versions 1, 2 and 3. Its current check (`version !== 1 && version !== 2`) rejects the v3 files the app now exports and must be replaced; `importData` does the real validation.
+- Navigation: the route `Source` is now `Ledger` (one (account, source) ledger); `SourceDetail` is the global source page. `App.tsx` already registers both.
 - Schema changes are append-only: the app is installed with real data. See `src/db/README.md`.
 
-## File ownership (v1.1)
+## File ownership (v1.2)
 
 | Session | Owns |
 | --- | --- |
-| Home | `src/screens/HomeScreen.tsx`, `src/screens/SettingsScreen.tsx`, `src/components/home/**` |
-| Account | `src/screens/AccountScreen.tsx`, `src/screens/SourceScreen.tsx`, `src/components/account/**` |
-| Entry | `src/screens/EntryFormScreen.tsx`, `src/components/entry/**` |
+| Home | `src/screens/HomeScreen.tsx`, `src/screens/SettingsScreen.tsx`, `src/screens/SourceDetailScreen.tsx`, `src/components/home/**`, `src/components/source/**` |
+| Account | `src/screens/AccountScreen.tsx`, `src/screens/LedgerScreen.tsx`, `src/screens/EntryFormScreen.tsx`, `src/components/account/**`, `src/components/entry/**` |
 | Build | `app.json`, `eas.json`, `BUILD.md`, `.gitignore` |
 | Integration (last) | `App.tsx`, `README.md`, tests, and fixes anywhere |
 
