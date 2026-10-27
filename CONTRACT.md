@@ -55,7 +55,7 @@ Exactly these exports, no more, no fewer. Behaviour and schema are documented in
 
 Light theme only. Static exports, no hook: `import { colors, accountColors, avatarTints, radius, fonts } from '../theme'`.
 
-- `colors`: `background #F3F2EE`, `card #FFFFFF`, `cardAlt #FAF9F6`, `border #E4E2DA`, `hairline #EEECE5`, `borderStrong #D6D3C8`, `text #17181A`, `textSecondary #3A3C42`, `muted #5E6066`, `chevron #9A9CA1`, `primary #1C2B4A`, `onPrimary #FFFFFF`, `onPrimaryMuted #C7D0E3`, `primarySoft #E3EAF6`, `inColor #157A4A`, `outColor #B3261E`, `chip #F1EFE8`, `dashed #A9A69B`
+- `colors`: `background #F3F2EE`, `card #FFFFFF`, `cardAlt #FAF9F6`, `border #E4E2DA`, `hairline #EEECE5`, `borderStrong #D6D3C8`, `text #17181A`, `textSecondary #3A3C42`, `muted #5E6066`, `chevron #9A9CA1`, `primary #1C2B4A`, `onPrimary #FFFFFF`, `onPrimaryMuted #C7D0E3`, `primarySoft #E3EAF6`, `inColor #157A4A`, `outColor #B3261E`, `chip #F1EFE8`, `dashed #A9A69B`, `scrim rgba(23, 24, 26, 0.45)` (behind modals)
 - `accountColors`: `['#F2B544', '#7FA3D9', '#E58F6B', '#8CC2A4', '#B9A3E0']`, pick by account index
 - `avatarTints`: 5 `{ bg, fg }` pairs, pick by source index
 - `radius`: `card 20`, `hero 24`, `button 18`, `pill 22`, `small 8`

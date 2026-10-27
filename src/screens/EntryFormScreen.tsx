@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,7 +30,7 @@ function Chip({ text, active, dashed, icon, onPress }: {
       style={{
         height: 44, borderRadius: radius.pill, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 8,
         backgroundColor: active ? colors.primarySoft : colors.card,
-        borderWidth: active ? 2 : 1, borderColor: active ? colors.primary : dashed ? colors.dashed : colors.borderStrong,
+        borderWidth: 2, borderColor: active ? colors.primary : dashed ? colors.dashed : colors.borderStrong,
         borderStyle: dashed ? 'dashed' : 'solid',
       }}
     >
@@ -63,8 +63,6 @@ export default function EntryFormScreen({ navigation, route }: Props) {
   const [newError, setNewError] = useState('');
   const [errors, setErrors] = useState<{ amount?: string; source?: string; date?: string }>({});
   const [saving, setSaving] = useState(false);
-
-  useLayoutEffect(() => { navigation.setOptions({ headerShown: false }); }, [navigation]);
 
   useEffect(() => {
     (async () => {

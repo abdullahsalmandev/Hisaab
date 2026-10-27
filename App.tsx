@@ -41,7 +41,7 @@ export default function App() {
         <StatusBar style="dark" />
         {error ? (
           <>
-            <Text style={{ color: colors.outColor, fontSize: 20, fontWeight: '600', marginBottom: 8 }}>Could not open the database</Text>
+            <Text style={{ color: colors.outColor, fontFamily: fonts.bold, fontSize: 20, marginBottom: 8 }}>Could not open the database</Text>
             <Text style={{ color: colors.muted, textAlign: 'center' }}>{error}</Text>
           </>
         ) : (
@@ -54,7 +54,7 @@ export default function App() {
   return (
     <NavigationContainer theme={navTheme}>
       <StatusBar style="dark" />
-      <Stack.Navigator screenOptions={{ contentStyle: { backgroundColor: colors.background }, headerShadowVisible: false }}>
+      <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Account" component={AccountScreen} />
         <Stack.Screen name="Source" component={SourceScreen} />

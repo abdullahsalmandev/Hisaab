@@ -24,4 +24,5 @@ function wrap(db: DatabaseSync) {
   };
 }
 
+export const defaultDatabaseDirectory = '/data/SQLite';
 export const openDatabaseAsync = async () => wrap((globalThis as unknown as { __testDb: DatabaseSync }).__testDb);

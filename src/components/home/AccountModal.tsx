@@ -12,7 +12,7 @@ export default function AccountModal({ visible, title, initial, onSave, onCancel
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
-        <Pressable accessibilityLabel="Close" onPress={onCancel} style={[StyleSheet.absoluteFill, { backgroundColor: colors.text, opacity: 0.45 }]} />
+        <Pressable accessibilityLabel="Close" onPress={onCancel} style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} />
         <View style={{ backgroundColor: colors.card, borderRadius: radius.card, padding: 24, borderWidth: 1, borderColor: colors.border }}>
           <Text style={{ color: colors.text, fontFamily: fonts.bold, fontSize: 20, marginBottom: 16 }}>{title}</Text>
           <TextInput

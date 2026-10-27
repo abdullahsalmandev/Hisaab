@@ -33,7 +33,9 @@ A fresh install creates this directly with no seeded sources. A database with a 
 
 ## Migration v1 -> v2
 
-Runs once, in ONE transaction (the `user_version` bump is inside it):
+Before anything changes, `hisaab.db` (and any `-wal` / `-shm`) is copied to `hisaab-pre-v2.db` in the same directory, only if that copy does not exist yet. The sidecars are copied first and the main file last, so an existing `hisaab-pre-v2.db` means the copy is complete. If the copy fails, the migration does not run. The app never deletes it.
+
+Then the migration runs once, in ONE transaction (the `user_version` bump is inside it):
 
 1. The v1 `entries` and `sources` tables are renamed to `entries_v1` and `sources_v1`.
 2. The v2 `sources` and `entries` tables are created.

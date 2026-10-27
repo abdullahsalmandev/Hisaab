@@ -6,6 +6,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import app from '../../app.json';
 import { exportData, importData } from '../db';
 import { colors, fonts, radius } from '../theme';
+import Header from '../components/account/Header';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -97,27 +98,30 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: 20, gap: 12, flexGrow: 1 }}>
-      <ActionCard
-        title="Export backup"
-        hint="Save all accounts, sources and entries as a JSON file you can share or keep."
-        button="Export backup"
-        busy={busy}
-        onPress={exportBackup}
-      />
-      <ActionCard
-        title="Import backup"
-        hint="Replace all data with a backup file. Backups from earlier versions of Hisaab work too."
-        button="Import backup"
-        outlined
-        busy={busy}
-        onPress={importBackup}
-      />
-      {busy && <ActivityIndicator color={colors.primary} />}
-      <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingTop: 24, gap: 4 }}>
-        <Text style={{ color: colors.muted, fontFamily: fonts.regular, fontSize: 13, textAlign: 'center' }}>Hisaab. All data is stored only on this phone.</Text>
-        <Text style={{ color: colors.muted, fontFamily: fonts.regular, fontSize: 13, fontVariant: ['tabular-nums'] }}>Version {app.expo.version}</Text>
-      </View>
-    </ScrollView>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Header title="Settings" />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 12, flexGrow: 1 }}>
+        <ActionCard
+          title="Export backup"
+          hint="Save all accounts, sources and entries as a JSON file you can share or keep."
+          button="Export backup"
+          busy={busy}
+          onPress={exportBackup}
+        />
+        <ActionCard
+          title="Import backup"
+          hint="Replace all data with a backup file. Backups from earlier versions of Hisaab work too."
+          button="Import backup"
+          outlined
+          busy={busy}
+          onPress={importBackup}
+        />
+        {busy && <ActivityIndicator color={colors.primary} />}
+        <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingTop: 24, gap: 4 }}>
+          <Text style={{ color: colors.muted, fontFamily: fonts.regular, fontSize: 13, textAlign: 'center' }}>Hisaab. All data is stored only on this phone.</Text>
+          <Text style={{ color: colors.muted, fontFamily: fonts.regular, fontSize: 13, fontVariant: ['tabular-nums'] }}>Version {app.expo.version}</Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }

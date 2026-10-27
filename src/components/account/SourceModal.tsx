@@ -21,7 +21,7 @@ export default function SourceModal({ visible, title, initial, onSave, onCancel 
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: `${colors.text}80` }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: colors.scrim }}>
         <View style={{ backgroundColor: colors.card, borderRadius: radius.card, padding: 20 }}>
           <Text style={{ fontFamily: fonts.heavy, fontSize: 20, color: colors.text, marginBottom: 14 }}>{title}</Text>
           <TextInput

@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { File } from 'expo-file-system';
 import type { AccountWithBalance, BackupFile, Entry, LedgerRow, NewEntry, SourceWithBalance } from '../types';
 import { convertV1, parseBackup, withRunningBalance, type V1Entry } from './logic';
 
@@ -32,7 +33,20 @@ const SOURCES_ENTRIES_DDL = `
 
 const SIGNED = `CASE WHEN type = 'in' THEN amount ELSE -amount END`;
 
-// ponytail: no copy of the db file is taken first; the single transaction plus the checks below are the safety net. Add a serializeAsync copy if a future migration is riskier.
+const PRE_V2 = 'hisaab-pre-v2.db';
+
+// Before the one-way v1 -> v2 migration, copy hisaab.db (and any -wal / -shm) next to it as hisaab-pre-v2.db, once.
+// Sidecars go first and the main file last, so an existing hisaab-pre-v2.db means the copy is complete. The app never deletes it.
+async function backupBeforeV2(): Promise<void> {
+  const dir = String(SQLite.defaultDatabaseDirectory).replace(/\/+$/, '');
+  const at = (name: string) => new File(`${dir.startsWith('file:') ? dir : `file://${dir}`}/${name}`);
+  if (at(PRE_V2).exists) return;
+  for (const suffix of ['-wal', '-shm', '']) {
+    const src = at(`hisaab.db${suffix}`);
+    if (src.exists) await src.copy(at(`${PRE_V2}${suffix}`), { overwrite: true }); // overwrite only replaces leftovers of an interrupted copy
+  }
+}
+
 // v1 -> v2 in ONE transaction. The v1 tables are renamed aside, v2 is built and filled, balances are checked against v1,
 // and only then are the v1 tables dropped. Any throw rolls everything back, including the user_version bump.
 async function migrateV1(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -82,6 +96,7 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
       await db.execAsync(`${ACCOUNTS_DDL} ${SOURCES_ENTRIES_DDL} PRAGMA user_version = ${SCHEMA_VERSION};`);
     });
   } else if (version === 1) {
+    await backupBeforeV2();
     await migrateV1(db);
   } else if (version !== SCHEMA_VERSION) {
     throw new Error(`This database was written by a newer version of Hisaab (schema ${version}). Update the app.`);

@@ -3,6 +3,27 @@ import { DatabaseSync } from 'node:sqlite';
 
 jest.mock('expo-sqlite', () => require('./sqliteTestShim'));
 
+// In-memory stand-in for the slice of expo-file-system that src/db uses: File.exists and File.copy.
+const mockFs = { files: new Set<string>(), copies: [] as string[], failCopy: false };
+jest.mock('expo-file-system', () => ({
+  File: class {
+    uri: string;
+    constructor(uri: string) { this.uri = uri; }
+    get exists() { return mockFs.files.has(this.uri); }
+    async copy(dest: { uri: string }) {
+      if (mockFs.failCopy) throw new Error('disk full');
+      mockFs.files.add(dest.uri);
+      mockFs.copies.push(`${this.uri} -> ${dest.uri}`);
+    }
+  },
+}));
+const DIR = 'file:///data/SQLite';
+beforeEach(() => {
+  mockFs.files = new Set([`${DIR}/hisaab.db`, `${DIR}/hisaab.db-wal`]); // no -shm: only files that exist are copied
+  mockFs.copies = [];
+  mockFs.failCopy = false;
+});
+
 type Db = typeof import('./index');
 
 function load(raw: DatabaseSync): Db {
@@ -100,6 +121,41 @@ describe('migration v1 -> v2', () => {
     expect(raw.prepare('SELECT * FROM entries ORDER BY id').all().map((r) => ({ ...r }))).toEqual(before);
     expect(raw.prepare('PRAGMA table_info(entries)').all().map((c) => (c as { name: string }).name)).toContain('account_id');
     expect(raw.prepare('SELECT COUNT(*) AS n FROM sources').get()).toMatchObject({ n: 3 }); // the v1 global sources are back
+  });
+
+  test('copies hisaab.db and its -wal/-shm files to hisaab-pre-v2.db before migrating, db file last', async () => {
+    const raw = v1Db();
+    await load(raw).initDb();
+    expect(mockFs.copies).toEqual([
+      `${DIR}/hisaab.db-wal -> ${DIR}/hisaab-pre-v2.db-wal`,
+      `${DIR}/hisaab.db -> ${DIR}/hisaab-pre-v2.db`,
+    ]);
+    expect(userVersion(raw)).toBe(2);
+  });
+
+  test('does not copy again when hisaab-pre-v2.db already exists, and never deletes it', async () => {
+    mockFs.files.add(`${DIR}/hisaab-pre-v2.db`);
+    await load(v1Db()).initDb();
+    expect(mockFs.copies).toEqual([]);
+    expect(mockFs.files.has(`${DIR}/hisaab-pre-v2.db`)).toBe(true);
+  });
+
+  test('no copy on a fresh install or an already migrated database', async () => {
+    await load(new DatabaseSync(':memory:')).initDb();
+    const raw = v1Db();
+    await load(raw).initDb();
+    mockFs.copies = [];
+    mockFs.files.delete(`${DIR}/hisaab-pre-v2.db`);
+    await load(raw).initDb(); // user_version is already 2
+    expect(mockFs.copies).toEqual([]);
+  });
+
+  test('a failed copy stops the migration and leaves v1 untouched', async () => {
+    mockFs.failCopy = true;
+    const raw = v1Db();
+    await expect(load(raw).initDb()).rejects.toThrow(/disk full/);
+    expect(userVersion(raw)).toBe(1);
+    expect(tables(raw)).toEqual(['accounts', 'entries', 'sources']);
   });
 
   test('refuses a database from a newer schema', async () => {

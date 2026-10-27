@@ -1,15 +1,13 @@
-import { useLayoutEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, fonts } from '../../theme';
 
-// Replaces the native header: hides it on the host screen and draws back arrow + title (+ optional subtitle).
+// The app hides native headers (App.tsx); each screen draws this one: back arrow + title (+ optional subtitle).
 export default function Header({ title, subtitle }: { title: string; subtitle?: string }) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  useLayoutEffect(() => { navigation.setOptions({ headerShown: false }); }, [navigation]);
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: insets.top + 4, paddingHorizontal: 8, paddingBottom: 8 }}>

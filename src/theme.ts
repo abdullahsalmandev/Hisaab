@@ -18,6 +18,7 @@ export const colors = {
   outColor: '#B3261E',
   chip: '#F1EFE8',
   dashed: '#A9A69B',
+  scrim: 'rgba(23, 24, 26, 0.45)', // text colour at 45%, behind modals
 };
 
 // Pick by account index: accountColors[i % accountColors.length]

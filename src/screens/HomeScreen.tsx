@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -21,8 +21,6 @@ export default function HomeScreen({ navigation }: Props) {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState<AccountWithBalance | 'new' | null>(null);
-
-  useLayoutEffect(() => { navigation.setOptions({ headerShown: false }); }, [navigation]);
 
   const load = useCallback(async () => {
     try {
